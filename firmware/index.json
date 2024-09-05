@@ -1,0 +1,41 @@
+{
+    "branches": {
+    "0xf20448": "e7dab57c21d0edf76b0e4388d21b44f90f8f5a4a",
+    "3.x.x-maintenance": "dd7fae73d4ed0dea7588e348187c17b4cedd2860",
+    "decrease-mav-rx-to-ardu-baud": "e119e551a42eef7549c7e431ca8ea64ce3dca10e",
+    "lr1121-433": "68c360fc2d1b5041b6153a6fc7151c6d298a4004",
+    "lr1121-SET_TCXO_MODE": "2653784b8f90ab27e84a6e05baca92e954ea15ed",
+    "make-telemetryConfirm-volatile": "bee09c01ab1c6c2b32ca904ded97a6f412965570",
+    "master": "d9f56f8bd6f9f7144d5f01caaca766383e1e0950",
+    "mav-fsk": "0de9ca8513311682f4df06f3df0bd5f5bb15956e",
+    "mav-hide-lua-options": "3dae8fa56afeca326daf844afa9d3e6cdd946bd3",
+    "mavlink-rc-crsf": "18137308ad18f9e11653acc4d0a5cc97a086dae9",
+    "rf-mode-specific-PacketToTockSlack": "3e181a038e6f92ee297c31aa043eb8fdc2782037",
+    "split-900AU": "c10d0aadc7754b306ddcd9d0a89b8eeab4cc3d78",
+    "test-lbt-timings": "f6b91edac299fdab62799b8cf5303db957ff190a",
+    "use-FC-sysid": "cc42ec7c2113b459ee5a671103f9d3e2bc5f172d"
+    },
+    "tags": {
+    "3.0.0": "8aa1b03e804ee896e974a05c3d9aadfb93d17069",
+    "3.0.1": "2470fce853f0f9d389aada1e249c4fa1c775b9f9",
+    "3.1.0": "a60040e8049e9fc2faedea3ffbbe2dc98690195c",
+    "3.1.1": "2909ba2db2909b5c38a299eed575082f2894baf1",
+    "3.1.2": "4da3aa7a6efc2f175b052647aa151e6c337e7b07",
+    "3.2.0": "8d3388ef3369a2d8a64f92a80e42acb29f8e513e",
+    "3.2.1": "8dbbdbe442660713ba1de07828ceb20cdaa5e26a",
+    "3.3.0": "ae9df3d202aa905358f0fdc1ca36718736ebdf38",
+    "3.3.0-RC1": "079a91d3db39b64ea39bccd25f9bf4457659152d",
+    "3.3.0-RC2": "5167d2496155808bd1502df79a162ae7f9c0cc8e",
+    "3.3.1": "e051b89b23b5935b959ea9beddf685d857d03af9",
+    "3.3.2": "2d98919b5a4c780d3d1c8400dd478ef99a4b3025",
+    "3.4-ALPHA": "11fde0792850cfe80c4e7d479007ad896e9e1dc0",
+    "3.4.0": "499697ca7efc099050868d30578368a75df63d72",
+    "3.4.0-RC1": "d786b0215da2ffc69078855316ef060e144e3d7f",
+    "3.4.0-RC2": "c78c5d05bb1b189f3b915b6848ec95ecd5a74760",
+    "3.4.0-RC3": "43b97c08ecde07dc40e59b410dffaf1683da859c",
+    "3.4.1": "a7f27a5b9614c1c24d36bc7d761b0d1c7df3191c",
+    "3.4.2": "9cf33883fee5356898737ce3dc2680100408c28c",
+    "3.4.3": "41daca2a4ff782188c38fbef3c4f1a36e320b1a3",
+    "3.5.0-RC1": "dd7fae73d4ed0dea7588e348187c17b4cedd2860"
+    }
+}

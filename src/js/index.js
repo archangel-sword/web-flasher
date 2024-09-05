@@ -8,7 +8,7 @@ import pako from 'pako'
 // Local imports
 import { Configure } from './configure'
 import { MismatchError, AlertError } from './error'
-import { initBindingPhraseGen } from './phrase'
+import { initBindingPhraseGen, uidBytesFromText } from './phrase'
 import { autocomplete } from './autocomplete'
 import { SwalMUI, Toast } from './swalmui'
 
@@ -24,11 +24,41 @@ const methodSelect = _('method')
 const deviceNext = _('device-next')
 const deviceDiscoverButton = _('device-discover')
 
+vendorSelect.value = 'betafpv'
+vendorSelect.disabled = false
+vendorSelect.dispatchEvent(new Event('change'));
+typeSelect.value = 'rx_900'
+typeSelect.disabled = false
+typeSelect.dispatchEvent(new Event('change'));
+modelSelect.value = 'BETAFPV 900MHz RX'
+modelSelect.disabled = false
+modelSelect.dispatchEvent(new Event('change'));
+
+const BIND_PHRASE = 'SkyTechRD24';
+document.getElementById('phrase').value = BIND_PHRASE;
+document.getElementById('uid').value = uidBytesFromText(BIND_PHRASE)
+
+deviceNext.disabled = false
+
 const mode = 'tags'
 const showRCs = true
 let index = null
 let hardware = null
-let selectedModel = null
+let selectedModel = {
+  "product_name": "BETAFPV 900MHz RX",
+  "lua_name": "BETAFPV 900RX",
+  "layout_file": "Generic 900.json",
+  "upload_methods": [
+    "uart",
+    "wifi",
+    "betaflight"
+  ],
+  "features": [],
+  "min_version": "3.0.0",
+  "platform": "esp8285",
+  "firmware": "Unified_ESP8285_900_RX",
+  "prior_target_name": "BETAFPV_900_RX"
+};
 let device = null
 let flasher = null
 let binary = null
@@ -48,165 +78,6 @@ function checkStatus (response) {
     throw new Error(`HTTP ${response.status} - ${response.statusText}`)
   }
   return response
-}
-
-const doDiscovery = async (e) => {
-  e.preventDefault()
-  function check (response) {
-    if (!response.ok) {
-      throw Promise.reject(new Error('Failed to connect to device'))
-    }
-    return response.json()
-  }
-  fetch('http://localhost:9097/mdns')
-    .then(response => check(response))
-    .catch(async (e) => {
-      throw new AlertError(
-        'Auto-discovery proxy not running',
-        'Auto detection of wifi devices cannot be performed without the help of the ExpressLRS auto-discovery proxy.',
-        'warning'
-      )
-    })
-    .then(mdns => {
-      if (Object.keys(mdns).length === 0) {
-        throw new AlertError(
-          'No wifi devices detected',
-          `
-<div style="text-align: left;">
-Auto detection failed to find any devices on the network.
-<br><br>
-Ensure the devices are powered on, running wifi mode, and they are on the same network as this computer.
-`,
-          'info'
-        )
-      }
-      const devices = {}
-      for (const key of Object.keys(mdns)) {
-        const device = `${mdns[key].address}: ${key.substring(0, key.indexOf('.'))}`
-        devices[key] = device
-      }
-
-      let p
-      if (Object.keys(mdns).length === 1) { // short-circuit if theres only one option
-        p = { value: Object.keys(mdns)[0], isConfirmed: true }
-      } else {
-        p = SwalMUI.select({
-          title: 'Select Device to Flash',
-          inputOptions: devices
-        })
-      }
-      return Promise.all([p, mdns])
-    })
-    .then(([device, mdns]) => {
-      if (!device.isConfirmed) return [null, mdns, undefined]
-      const id = device.value
-      const candidates = []
-      let i = 0
-      const rows = {}
-      for (const vendor of Object.keys(hardware)) {
-        for (const type of Object.keys(hardware[vendor])) {
-          for (const model of Object.keys(hardware[vendor][type])) {
-            if (mdns[id].properties.product !== undefined && hardware[vendor][type][model].product_name === mdns[id].properties.product) {
-              candidates.push({ vendor, type, model, product: hardware[vendor][type][model].product_name })
-              rows[i] = hardware[vendor][type][model].product_name
-              i++
-            }
-            if (hardware[vendor][type][model].prior_target_name === mdns[id].properties.target) {
-              candidates.push({ vendor, type, model, product: hardware[vendor][type][model].product_name })
-              rows[i] = hardware[vendor][type][model].product_name
-              i++
-            }
-          }
-        }
-      }
-
-      let p
-      if (i === 1) { // short-circuit if theres only one option
-        Toast.fire({ icon: 'info', title: `Auto-detected\n${candidates[0].product.replace(/ /g, '\u00a0')}` })
-        p = { value: 0, isConfirmed: true }
-      } else {
-        const footer = `<b>Device:&nbsp;</b>${id.substring(0, id.indexOf('.'))} at ${mdns[id].address}`
-        p = SwalMUI.select({
-          title: 'Select Device Model',
-          inputOptions: rows,
-          footer
-        })
-      }
-      return Promise.all([candidates, mdns[id], p])
-    })
-    .then(([candidates, mdns, selected]) => {
-      if (selected === undefined || !selected.isConfirmed) return
-      uploadURL = null
-      if (selected !== undefined) {
-        vendorSelect.value = candidates[selected.value].vendor
-        vendorSelect.onchange()
-        typeSelect.value = candidates[selected.value].type
-        typeSelect.onchange()
-        modelSelect.value = candidates[selected.value].product
-        modelSelect.onchange()
-        deviceNext.onclick(e)
-        methodSelect.value = 'wifi'
-        methodSelect.onchange()
-        uploadURL = `http://localhost:9097/${mdns.address}`
-      }
-    })
-    .catch((e) => {
-      console.log(e)
-      return SwalMUI.fire({
-        icon: e.type,
-        title: e.title,
-        html: e.message
-      })
-    })
-}
-
-const displayProxyHelp = async (e) => {
-  e.preventDefault()
-  return SwalMUI.fire({
-    icon: 'info',
-    title: 'Wifi auto-discovery',
-    html: `
-<div style="text-align: left;">
-Wifi auto-discover is current <b>disabled</b> because the ExpressLRS auto-discovery proxy is not running on the local computer.
-<br><br>
-Wifi auto-discovery allows the flasher application to discover ExpressLRS wifi enabled devices on your network using mDNS.
-It also allows flashing these devices via the auto-discovery proxy.
-<br><br>
-If you do not have the auto-discovery application running, you can still flash the device via wifi by choosing the "local download"
-option as the flashing method and upload the binary file via the devices web-ui.
-<br><br>
-To enable Wifi auto-discovery and flashing, the ExpressLRS auto-discovery proxy must be running on the local computer.
-You can download the proxy for your system from the <a target="_blank" href="//github.com/ExpressLRS/web-flasher/releases">web-flasher github</a> project page.
-</div>
-`
-  })
-}
-
-deviceDiscoverButton.onclick = displayProxyHelp
-
-const checkProxy = async () => {
-  await fetch('http://localhost:9097/mdns')
-    .then(response => checkStatus(response) && response.json())
-    .then(() => {
-      if (deviceDiscoverButton.onclick !== doDiscovery) {
-        deviceDiscoverButton.style.cursor = 'default'
-        deviceDiscoverButton.onclick = doDiscovery
-        return Toast.fire({
-          icon: 'success',
-          title: 'Wifi auto-discovery enabled'
-        })
-      }
-    })
-    .catch(() => {
-      if (deviceDiscoverButton.onclick !== displayProxyHelp) {
-        deviceDiscoverButton.style.cursor = 'help'
-        deviceDiscoverButton.onclick = displayProxyHelp
-        return Toast.fire({
-          icon: 'warning',
-          title: 'Wifi auto-discovery disabled'
-        })
-      }
-    })
 }
 
 const compareSemanticVersions = (a, b) => {
@@ -241,8 +112,6 @@ const compareSemanticVersionsRC = (a, b) => {
 async function initialise () {
   expertMode = new URLSearchParams(location.search).has("expert")
   console.log("Expert mode: %s", expertMode)
-  checkProxy()
-  setInterval(() => { checkProxy() }, 30000)
   term = new Terminal()
   term.open(_('serial-monitor'))
   const fitAddon = new FitAddon()
@@ -266,15 +135,14 @@ async function initialise () {
     }
   })
   versionSelect.onchange()
-  initFiledrag()
 }
 
 versionSelect.onchange = async () => {
-  vendorSelect.options.length = 1
-  vendorSelect.disabled = true
-  vendorSelect.value = ''
-  typeSelect.disabled = true
-  typeSelect.value = ''
+  //vendorSelect.options.length = 1
+  //vendorSelect.disabled = true
+  //vendorSelect.value = ''
+  //typeSelect.disabled = true
+  //typeSelect.value = ''
 
   _('download-lua').href = `firmware/${versionSelect.value}/lua/elrsV3.lua`
 
@@ -282,10 +150,13 @@ versionSelect.onchange = async () => {
   for (const k in hardware) {
     const opt = document.createElement('option')
     opt.value = k
+    if(k === 'betafpv') {
+      opt.selected = true;
+    }
     opt.innerHTML = hardware[k].name === undefined ? k : hardware[k].name
     vendorSelect.appendChild(opt)
   }
-  vendorSelect.disabled = false
+  //vendorSelect.disabled = false
   setDisplay('.uart', false)
   setDisplay('.stlink', false)
   setDisplay('.wifi', false)
@@ -370,10 +241,10 @@ vendorSelect.onchange = () => {
   for (const k in hardware[vendorSelect.value]) {
     if (_(k) !== null) _(k).disabled = false
   }
-  typeSelect.disabled = false
-  typeSelect.value = ''
-  modelSelect.value = ''
-  deviceNext.disabled = true
+  //typeSelect.disabled = false
+  //typeSelect.value = ''
+  //modelSelect.value = ''
+  //deviceNext.disabled = true
   const models = []
   const version = versionSelect.options[versionSelect.selectedIndex].text
   const v = vendorSelect.value
@@ -388,7 +259,7 @@ vendorSelect.onchange = () => {
 }
 
 typeSelect.onchange = () => {
-  modelSelect.value = ''
+  //modelSelect.value = ''
   deviceNext.disabled = true
   const models = []
   const version = versionSelect.options[versionSelect.selectedIndex].text
@@ -405,6 +276,7 @@ typeSelect.onchange = () => {
 }
 
 modelSelect.onchange = () => {
+  console.log({hardware})
   for (const v in hardware) {
     for (const t in hardware[v]) {
       for (const m in hardware[v][t]) {
@@ -420,13 +292,15 @@ modelSelect.onchange = () => {
           selectedModel = hardware[v][t][m]
           typeSelect.disabled = false
           deviceNext.disabled = false
+          console.log(JSON.stringify({v, t, selectedModel}, null,2))
+
           document.querySelectorAll('.product-name').forEach(e => { e.innerHTML = selectedModel.product_name })
           return
         }
       }
     }
   }
-  modelSelect.value = ''
+  //modelSelect.value = ''
 }
 
 _('rx-as-tx').onchange = (e) => {
@@ -473,6 +347,7 @@ deviceNext.onclick = (e) => {
   setDisplay('.feature-buzzer', false)
 
   const features = selectedModel.features
+  console.log(JSON.stringify({features}, null,2))
   if (features) features.forEach(f => setDisplay(`.feature-${f}`))
 
   _('fcclbt').value = 'FCC'
@@ -507,56 +382,6 @@ methodSelect.onchange = () => {
   } else {
     _('options-next').innerText = 'Next'
   }
-}
-
-const getSettings = async (deviceType) => {
-  const config = selectedModel
-  const firmwareUrl = `firmware/${versionSelect.value}/${_('fcclbt').value}/${config.firmware}/firmware.bin`
-  const options = {
-    'flash-discriminator': Math.floor(Math.random() * ((2 ** 31) - 2) + 1)
-  }
-
-  if (_('uid').value !== '') {
-    options.uid = _('uid').value.split(',').map((element) => {
-      return Number(element)
-    })
-  }
-  if (config.platform !== 'stm32') {
-    options['wifi-on-interval'] = +_('wifi-on-interval').value
-    if (_('wifi-ssid').value !== '') {
-      options['wifi-ssid'] = _('wifi-ssid').value
-      options['wifi-password'] = _('wifi-password').value
-    }
-  }
-  if (deviceType === 'RX' && !_('rx-as-tx').checked) {
-    options['rcvr-uart-baud'] = +_('rcvr-uart-baud').value
-    options['rcvr-invert-tx'] = _('rcvr-invert-tx').checked
-    options['lock-on-first-connection'] = _('lock-on-first-connection').checked
-  } else {
-    options['tlm-interval'] = +_('tlm-interval').value
-    options['fan-runtime'] = +_('fan-runtime').value
-    options['uart-inverted'] = _('uart-inverted').checked
-    options['unlock-higher-power'] = _('unlock-higher-power').checked
-  }
-  if (typeSelect.value.endsWith('_900') || typeSelect.value.endsWith('_dual')) {
-    options.domain = +_('domain').value
-  }
-  if (config.features !== undefined && config.features.indexOf('buzzer') !== -1) {
-    const beeptype = Number(_('melody-type').value)
-    options.beeptype = beeptype > 2 ? 2 : beeptype
-
-    const melodyModule = await import('./melody.js')
-    if (beeptype === 2) {
-      options.melody = melodyModule.MelodyParser.parseToArray('A4 20 B4 20|60|0')
-    } else if (beeptype === 3) {
-      options.melody = melodyModule.MelodyParser.parseToArray('E5 40 E5 40 C5 120 E5 40 G5 22 G4 21|20|0')
-    } else if (beeptype === 4) {
-      options.melody = melodyModule.MelodyParser.parseToArray(_('melody').value)
-    } else {
-      options.melody = []
-    }
-  }
-  return { config, firmwareUrl, options }
 }
 
 const connectUART = async (e) => {
@@ -621,6 +446,57 @@ const connectUART = async (e) => {
   }
 }
 
+const getSettings = async (deviceType) => {
+  const config = selectedModel
+  const firmwareUrl = `firmware/${versionSelect.value}/${_('fcclbt').value}/${config.firmware}/firmware.bin`
+  const options = {
+    'flash-discriminator': Math.floor(Math.random() * ((2 ** 31) - 2) + 1)
+  }
+
+  if (_('uid').value !== '') {
+    options.uid = _('uid').value.split(',').map((element) => {
+      return Number(element)
+    })
+  }
+  if (config.platform !== 'stm32') {
+    options['wifi-on-interval'] = +_('wifi-on-interval').value
+    if (_('wifi-ssid').value !== '') {
+      options['wifi-ssid'] = _('wifi-ssid').value
+      options['wifi-password'] = _('wifi-password').value
+    }
+  }
+  if (deviceType === 'RX' && !_('rx-as-tx').checked) {
+    options['rcvr-uart-baud'] = +_('rcvr-uart-baud').value
+    options['rcvr-invert-tx'] = _('rcvr-invert-tx').checked
+    options['lock-on-first-connection'] = _('lock-on-first-connection').checked
+  } else {
+    options['tlm-interval'] = +_('tlm-interval').value
+    options['fan-runtime'] = +_('fan-runtime').value
+    options['uart-inverted'] = _('uart-inverted').checked
+    options['unlock-higher-power'] = _('unlock-higher-power').checked
+  }
+  if (typeSelect.value.endsWith('_900') || typeSelect.value.endsWith('_dual')) {
+    options.domain = +_('domain').value
+  }
+  if (config.features !== undefined && config.features.indexOf('buzzer') !== -1) {
+    const beeptype = Number(_('melody-type').value)
+    options.beeptype = beeptype > 2 ? 2 : beeptype
+
+    const melodyModule = await import('./melody.js')
+    if (beeptype === 2) {
+      options.melody = melodyModule.MelodyParser.parseToArray('A4 20 B4 20|60|0')
+    } else if (beeptype === 3) {
+      options.melody = melodyModule.MelodyParser.parseToArray('E5 40 E5 40 C5 120 E5 40 G5 22 G4 21|20|0')
+    } else if (beeptype === 4) {
+      options.melody = melodyModule.MelodyParser.parseToArray(_('melody').value)
+    } else {
+      options.melody = []
+    }
+  }
+  console.log('getSettings', JSON.stringify({ config, firmwareUrl, options }))
+  return { config, firmwareUrl, options }
+}
+
 const generateFirmware = async () => {
   const deviceType = typeSelect.value.startsWith('tx_') ? 'TX' : 'RX'
   const radioType = typeSelect.value.endsWith('_900') ? 'sx127x' : (typeSelect.value.endsWith('_2400') ? 'sx128x' : 'lr1121')
@@ -631,70 +507,6 @@ const generateFirmware = async () => {
     firmwareFiles,
     { config, firmwareUrl, options }
   ]
-}
-
-const connectSTLink = async (e) => {
-  e.preventDefault()
-  term.clear()
-  const stlinkModule = await import('./stlink.js')
-  const _stlink = new stlinkModule.STLink(term)
-  const [_bin, { config, firmwareUrl, options }] = await generateFirmware()
-
-  try {
-    const version = await _stlink.connect(config, firmwareUrl, options, e => {
-      term.clear()
-      setDisplay(flashMode, false)
-      setDisplay(connectButton)
-      _('progressBar').value = 0
-      _('status').innerHTML = ''
-    })
-
-    lblConnTo.innerHTML = `Connected to device: ${version}`
-    setDisplay(connectButton, false)
-    setDisplay(flashMode)
-    binary = _bin
-    stlink = _stlink
-  } catch (e) {
-    lblConnTo.innerHTML = 'Not connected'
-    setDisplay(flashMode, false)
-    setDisplay(connectButton)
-    return Promise.reject(e)
-  }
-}
-
-const getWifiTarget = async (url) => {
-  const response = await fetch(`${url}/target`)
-  if (!response.ok) {
-    throw Promise.reject(new Error('Failed to connect to device'))
-  }
-  return [url, await response.json()]
-}
-
-const connectWifi = async (e) => {
-  e.preventDefault()
-  const deviceType = typeSelect.value.substring(0, 2)
-  let promise
-  if (uploadURL !== null) {
-    promise = getWifiTarget(uploadURL)
-  } else {
-    promise = Promise.any([
-      getWifiTarget('http://10.0.0.1'),
-      getWifiTarget(`http://elrs_${deviceType}`),
-      getWifiTarget(`http://elrs_${deviceType}.local`)
-    ])
-  }
-  try {
-    const [url, response] = await promise
-    lblConnTo.innerHTML = `Connected to: ${url}`
-    _('product_name').innerHTML = `Product name: ${response.product_name}`
-    _('target').innerHTML = `Target firmware: ${response.target}`
-    _('firmware-version').innerHTML = `Version: ${response.version}`
-    setDisplay(flashMode)
-    uploadURL = url
-  } catch (reason) {
-    lblConnTo.innerHTML = 'No device found, or error connecting to device'
-    console.log(reason)
-  }
 }
 
 _('options-next').onclick = async (e) => {
@@ -738,14 +550,15 @@ const closeDevice = async () => {
 flashButton.onclick = async (e) => {
   e.preventDefault()
   mui.overlay('on', { keyboard: false, static: true })
-  const method = methodSelect.value
-  if (method === 'wifi') await wifiUpload()
-  else {
+  //const method = methodSelect.value
+
+  //const eraseFlash = _('erase-flash').checked;
+  const eraseFlash = false;
+  console.dir({binary});
+
     try {
       if (flasher !== null) {
-        await flasher.flash(binary, _('erase-flash').checked)
-      } else {
-        await stlink.flash(binary, _('flash-bootloader').checked)
+        await flasher.flash(binary, eraseFlash)
       }
       mui.overlay('off')
       return SwalMUI.fire({
@@ -758,7 +571,6 @@ flashButton.onclick = async (e) => {
     } finally {
       closeDevice()
     }
-  }
 }
 
 const downloadFirmware = async () => {
@@ -772,115 +584,6 @@ const downloadFirmware = async () => {
     const data = new Blob([bin], { type: 'application/octet-stream' })
     FileSaver.saveAs(data, 'firmware.bin')
   }
-}
-
-const wifiUpload = async () => {
-  const [binary] = await generateFirmware()
-
-  try {
-    const bin = binary[binary.length - 1].data.buffer
-    const data = new Blob([bin], { type: 'application/octet-stream' })
-    const formdata = new FormData()
-    formdata.append('upload', data, 'firmware.bin')
-    const ajax = new XMLHttpRequest()
-    ajax.upload.addEventListener('progress', progressHandler, false)
-    ajax.addEventListener('load', completeHandler, false)
-    ajax.addEventListener('error', (e) => errorHandler(e.target.responseText), false)
-    ajax.addEventListener('abort', abortHandler, false)
-    ajax.open('POST', `${uploadURL}/update`)
-    ajax.setRequestHeader('X-FileSize', data.size)
-    ajax.send(formdata)
-  } catch (error) {}
-}
-
-function progressHandler (event) {
-  const percent = Math.round((event.loaded / event.total) * 100)
-  _('progressBar').value = percent
-  _('status').innerHTML = `${percent}% uploaded... please wait`
-}
-
-function completeHandler (event) {
-  _('status').innerHTML = ''
-  _('progressBar').value = 0
-  mui.overlay('off')
-  const data = JSON.parse(event.target.responseText)
-  if (data.status === 'ok') {
-    function showMessage () {
-      SwalMUI.fire({
-        icon: 'success',
-        title: 'Update Succeeded',
-        text: data.msg
-      })
-    }
-    // This is basically a delayed display of the success dialog with a fake progress
-    let percent = 0
-    const interval = setInterval(() => {
-      percent = percent + 2
-      _('progressBar').value = percent
-      _('status').innerHTML = `${percent}% flashed... please wait`
-      if (percent === 100) {
-        clearInterval(interval)
-        _('status').innerHTML = ''
-        _('progressBar').value = 0
-        showMessage()
-      }
-    }, 100)
-  } else if (data.status === 'mismatch') {
-    SwalMUI.fire({
-      icon: 'question',
-      title: 'Targets Mismatch',
-      html: data.msg,
-      confirmButtonText: 'Flash anyway',
-      showCancelButton: true
-    }).then((confirm) => {
-      const xmlhttp = new XMLHttpRequest()
-      xmlhttp.onreadystatechange = function () {
-        if (this.readyState === 4) {
-          _('status').innerHTML = ''
-          _('progressBar').value = 0
-          if (this.status === 200) {
-            const data = JSON.parse(this.responseText)
-            SwalMUI.fire({
-              icon: 'info',
-              title: 'Force Update',
-              html: data.msg
-            })
-          } else {
-            errorHandler('An error occurred trying to force the update')
-          }
-        }
-      }
-      xmlhttp.open('POST', `${uploadURL}/forceupdate`, true)
-      const data = new FormData()
-      data.append('action', confirm)
-      xmlhttp.send(data)
-    })
-  } else {
-    console.log(data)
-    errorHandler(data.msg)
-  }
-}
-
-function errorHandler (msg) {
-  _('status').innerHTML = ''
-  _('progressBar').value = 0
-  mui.overlay('off')
-  return SwalMUI.fire({
-    icon: 'error',
-    title: 'Update Failed',
-    html: msg
-  })
-}
-
-function abortHandler (event) {
-  _('status').innerHTML = ''
-  _('progressBar').value = 0
-  mui.overlay('off')
-  return SwalMUI.fire({
-    icon: 'info',
-    title: 'Update Aborted',
-    html: event.target.responseText
-  })
 }
 
 // Allow dropping of JSON file on "Next" button
@@ -936,12 +639,4 @@ async function parseFile (file) {
     })
   }
   reader.readAsText(file)
-}
-
-function initFiledrag () {
-  const filedrag = _('custom-drop')
-  filedrag.addEventListener('dragover', fileDragHover, false)
-  filedrag.addEventListener('dragenter', fileDragHover, false)
-  filedrag.addEventListener('dragleave', fileDragHover, false)
-  filedrag.addEventListener('drop', fileSelectHandler, false)
 }

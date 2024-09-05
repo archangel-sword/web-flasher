@@ -92,4 +92,4 @@ function initBindingPhraseGen () {
   setOutput('')
 }
 
-export { initBindingPhraseGen }
+export { initBindingPhraseGen, uidBytesFromText }
